@@ -262,7 +262,7 @@ class Generator {
 
         $this->addActionsParameters($documentation, $route, $method, $actionMethodInstance);
 
-        $this->addActionsResponses($documentation);
+        $this->addActionsResponses($documentation, $route);
 
         if ($this->hasSecurityDefinitions) {
             $this->addActionScopes($documentation, $route);
@@ -457,17 +457,53 @@ class Generator {
      * Append action responses
      * @param array $information
      * @param DataObjects\Route $route
-     * @param string $method
-     * @param ReflectionMethod|null $actionInstance
      */
-    private function addActionsResponses(array & $information): void {
+    private function addActionsResponses(array & $information, DataObjects\Route $route): void {
+        $authenticated = collect($route->middleware())->contains(function ($middleware) {
+            return Str::startsWith($middleware, 'auth');
+        });
 
         if (\count(Arr::get($information, 'responses')) === 0) {
-            Arr::set($information, 'responses', [
-                '200' => [
-                    'description' => 'OK',
-                ]
-            ]);
+            $responses = $authenticated ?
+                [
+                    '401' => [
+                        'description' => '(Unauthorized) Invalid or missing Access Token',
+                    ],
+                ] :
+                [];
+            switch (str($route->action())->after('@')->toString()) {
+                case 'destroy':
+                    $responses['204'] = [
+                        'description' => 'No Content',
+                        'content' => [
+                            'application/json' => [
+                                null
+                            ]
+                        ]
+                    ];
+                    break;
+                case 'store':
+                    $responses['201'] = [
+                        'description' => 'Created',
+                        'content' => [
+                            'application/json' => [
+                                null
+                            ]
+                        ]
+                    ];
+                    break;
+                default:
+                    $responses['200'] = [
+                        'description' => 'OK',
+                        'content' => [
+                            'application/json' => [
+                                null
+                            ]
+                        ]
+                    ];
+                    break;
+            }
+            Arr::set($information, 'responses', $responses);
         }
 
         foreach ($this->append['responses'] as $code => $response) {
